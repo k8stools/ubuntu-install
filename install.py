@@ -26,21 +26,16 @@ def main(argv):
     
     print('Upgrading the system...')
     
-    check_call(['apt', 'update'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
-    
-    check_call(['apt', 'upgrade', '-y'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['apt', 'update'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['apt', 'upgrade', '-y'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Installing basic tools...')
     
-    check_call(['apt', 'install', '-y', 'mc', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'open-vm-tools', 'ca-certificates', 'curl', 'apt-transport-https'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['apt', 'install', '-y', 'mc', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'open-vm-tools', 'ca-certificates', 'curl', 'apt-transport-https'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Setting up the environment...')
     
-    check_call(['mkdir', '-pv', '/root/.vim/colors'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['mkdir', '-pv', '/root/.vim/colors'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     url = 'https://raw.githubusercontent.com/k8stools/ubuntu-install/main/files/bashrc'
     r = requests.get(url, allow_redirects=True)
@@ -54,7 +49,7 @@ def main(argv):
     r = requests.get(url, allow_redirects=True)
     open('/root/.vimrc', 'wb').write(r.content)
     
-    print('Set SSH keys...')
+    # print('Set SSH keys...')
 
     # with open('/root/.ssh/authorized_keys', 'w') as file_out:
     #     file_out.write('''''')
@@ -63,9 +58,6 @@ def main(argv):
         install_k8s(kube_version, node_type, containerd_version)
 
 def install_k8s(kube_version, node_type, containerd_version):
-    print('Containerd version:', containerd_version)
-    print('Kubernetes version:', kube_version)
-    print('Node type:', node_type)
     
     check_call(['mkdir', '-pv', '/root/tools/'],
         stdout=open(os.devnull,'wb'), stderr=STDOUT)
@@ -95,70 +87,67 @@ def install_k8s(kube_version, node_type, containerd_version):
     url = "https://github.com/containernetworking/plugins/releases/download/v" + cni_plugins_version + "/cni-plugins-linux-amd64-v" + cni_plugins_version + ".tgz"
     r = requests.get(url, allow_redirects=True)
     open('/root/tools/cni-plugins.tgz', 'wb').write(r.content)
-    check_call(['mkdir', '-p', '/opt/cni/bin'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
-    check_call(['tar', 'Cxzvf', '/opt/cni/bin', '/root/tools/cni-plugins.tgz'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['mkdir', '-p', '/opt/cni/bin'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['tar', 'Cxzvf', '/opt/cni/bin', '/root/tools/cni-plugins.tgz'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Configuring Containerd ...')
     
-    check_call(['mkdir', '-p', '/etc/containerd'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
-    check_call(['containerd', 'config', 'default'],
-        stdout=open('/etc/containerd/config.toml','wb'), stderr=STDOUT)
-    check_call(["sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(['mkdir', '-p', '/etc/containerd'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['containerd', 'config', 'default'], stdout=open('/etc/containerd/config.toml','wb'), stderr=STDOUT)
+    check_call(["sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     
-    print('Configure Systemd daemon ...')
+    print('Configuring Systemd daemon ...')
     url = "https://raw.githubusercontent.com/containerd/containerd/main/containerd.service"
     r = requests.get(url, allow_redirects=True)
     open('/etc/systemd/system/containerd.service', 'wb').write(r.content)
-    check_call(['systemctl', 'daemon-reload'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
-    check_call(['systemctl', 'enable', '--now', 'containerd'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['systemctl', 'daemon-reload'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['systemctl', 'enable', '--now', 'containerd'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Installing Kubernetes ' + kube_version + ' ...')
-    check_call(["sed -i 's/swap.img/# swap.img/g' /etc/fstab"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    check_call(["swapoff -a"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["sed -i 's/swap.img/# swap.img/g' /etc/fstab"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["swapoff -a"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     with open('/etc/sysctl.d/kubernetes.conf', 'w') as file_out:
         file_out.write('''net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1''')
-    check_call(["modprobe overlay"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    check_call(["modprobe br_netfilter"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    check_call(["sysctl --system"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["modprobe overlay"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["modprobe br_netfilter"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["sysctl --system"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     url = "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
     r = requests.get(url, allow_redirects=True)
     open('/usr/share/keyrings/kubernetes-archive-keyring.gpg', 'wb').write(r.content)
     with open('/etc/apt/sources.list.d/kubernetes.list', 'w') as file_out:
         file_out.write("deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main\n")
-    check_call(["apt update"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    check_call(["apt install -y kubelet=" + kube_version + "-00 kubeadm=" + kube_version + "-00 kubectl=" + kube_version + "-00"],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    check_call(['apt-mark', 'hold', 'kubeadm', 'kubectl', 'kubelet'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(["apt update"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(["apt install -y kubelet=" + kube_version + "-00 kubeadm=" + kube_version + "-00 kubectl=" + kube_version + "-00"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+    check_call(['apt-mark', 'hold', 'kubeadm', 'kubectl', 'kubelet'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    
+    join_command = ''
     
     if node_type == "controller":
         print('Initializing controller node ...')
-        check_call(["kubeadm init --pod-network-cidr=10.244.0.0/16"],
-            stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-        check_call(["mkdir -p $HOME/.kube"],
-            stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-        check_call(["cp -i /etc/kubernetes/admin.conf $HOME/.kube/config"],
-            stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-        check_call(["chown $(id -u):$(id -g) $HOME/.kube/config"],
-            stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(["kubeadm init --pod-network-cidr=10.244.0.0/16"], stdout=open('/root/tools/k8s_init_out','wb'), stderr=STDOUT, shell=True)
+        check_call(["mkdir -p $HOME/.kube"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(["cp -i /etc/kubernetes/admin.conf $HOME/.kube/config"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(["chown $(id -u):$(id -g) $HOME/.kube/config"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        
+        with open('/root/tools/k8s_init_out', 'r') as k8s_init_out:
+            for line in k8s_init_out.readlines():
+                if '--token' in line:
+                    join_command = line[:-2]
+                if '--discovery-token-ca-cert-hash' in line:
+                    join_command = join_command + line[1:-1]
+                    break
+                
     
-    print('Removing downloaded rools ...')
-    check_call(['rm', '-rf', '/root/tools'],
-        stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    print('Removing downloaded tools ...')
+    check_call(['rm', '-rf', '/root/tools'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    
+    print('Use the following command to join worker nodes to this cluster:')
+    print(join_command)
+    print()
+    print('To join Windows node with ContainerD don\'t forget to add --cri-socket "npipe:////./pipe/containerd-containerd"')
+    print(join_command + '--cri-socket "npipe:////./pipe/containerd-containerd"')
     
     # print('Reboot ...')
     # os.system('reboot')

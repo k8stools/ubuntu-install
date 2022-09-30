@@ -11,18 +11,25 @@ import apt
 def main(argv):
     kube_version = ''
     node_type = ''
+    
     try:
-      opts, args = getopt.getopt(argv,"hk:n:c:",["kubernetes=", "node-type=", "containerd="])
+      opts, args = getopt.getopt(argv,"hk:n:c:t:d:m:",["kubernetes=", "node-type=", "containerd=", "join-token=", "discovery-token=", "controller-node="])
     except getopt.GetoptError:
-      print('-kv <kubernetes version> -nt <node-type>')
+      print('-k <kubernetes version> -n <node-type>')
       sys.exit(2)
     for opt, arg in opts:
         if opt in ("-k", "--kubernetes"):
             kube_version = arg
         if opt in ("-n", "--node-type"):
             node_type = arg
-        if opt in ("-n", "--containerd"):
+        if opt in ("-c", "--containerd"):
             containerd_version = arg
+        if opt in ("-t", "--join-token"):
+            join_token = arg
+        if opt in ("-d", "--discovery-token"):
+            discovery_token = arg
+        if opt in ("-m", "--controller-node"):
+            controller_node = arg
     
     print('Upgrading the system...')
     
@@ -31,7 +38,7 @@ def main(argv):
     
     print('Installing basic tools...')
     
-    check_call(['apt', 'install', '-y', 'mc', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'open-vm-tools', 'ca-certificates', 'curl', 'apt-transport-https'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['apt', 'install', '-y', 'mc', 'curl', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'open-vm-tools', 'ca-certificates', 'curl', 'apt-transport-https'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Setting up the environment...')
     
@@ -55,9 +62,18 @@ def main(argv):
     #     file_out.write('''''')
     
     if (kube_version != ''):
-        install_k8s(kube_version, node_type, containerd_version)
+        if (node_type == ''):
+            print('Please select node type. (--node-type=[controller, worker]')
+            sys.exit()
+        if(node_type == 'controller'):
+            install_k8s(kube_version, node_type, containerd_version)
+        elif(node_type == 'worker'):
+            install_k8s(kube_version, node_type, containerd_version, controller_node, join_token, discovery_token)
+        else:
+            print('Please select proper node type. (--node-type=[controller, worker]')
+            sys.exit(2)
 
-def install_k8s(kube_version, node_type, containerd_version):
+def install_k8s(kube_version, node_type, containerd_version, controller_node='', join_token='', discovery_token=''):
     
     check_call(['mkdir', '-pv', '/root/tools/'],
         stdout=open(os.devnull,'wb'), stderr=STDOUT)
@@ -138,16 +154,36 @@ net.ipv4.ip_forward = 1''')
                 if '--discovery-token-ca-cert-hash' in line:
                     join_command = join_command + line[1:-1]
                     break
-                
+        
+        print("Installing Calico networking tools ...")
+    
+        check_call(['curl -L https://github.com/projectcalico/calico/releases/download/v3.24.1/calicoctl-linux-amd64 -o /root/tools/calicoctl'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['chmod +x /root/tools/calicoctl'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['mv /root/tools/calicoctl /usr/bin/'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/calico.yaml -o /root/tools/calico.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['kubectl apply -f /root/tools/calico.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/apiserver.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['openssl req -x509 -nodes -newkey rsa:4096 -keyout /root/tools/apiserver.key -out /root/tools/apiserver.crt -days 365 -subj "/" -addext "subjectAltName = DNS:calico-api.calico-apiserver.svc"'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['kubectl create secret -n calico-apiserver generic calico-apiserver-certs --from-file=/root/tools/apiserver.key --from-file=/root/tools/apiserver.crt'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['kubectl patch apiservice v3.projectcalico.org -p "{\\"spec\\": {\\"caBundle\\": \\"$(kubectl get secret -n calico-apiserver calico-apiserver-certs -o go-template=\'{{ index .data "apiserver.crt" }}\')\\"}}"'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        
+        print('Use the following command to join worker nodes to this cluster:')
+        print(join_command)
+        print()
+        print('To join Windows node with ContainerD don\'t forget to add --cri-socket "npipe:////./pipe/containerd-containerd"')
+        print(join_command + '--cri-socket "npipe:////./pipe/containerd-containerd"')
+        
+    elif node_type == "worker":
+        print('Adding node to the cluster ...')
+        
+        check_call(['kubeadm join ' + controller_node + ':6443 --token ' + join_token + ' --discovery-token-ca-cert-hash sha256:' + discovery_token], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        
+        print('If you plan to use the cluster with Windows worker nodes,\ndon\'t forget to run the followin commands on the controller node after adding the first Linux worker:\n\n')
+        print('calicoctl patch felixconfiguration default -p \'{"spec":{"ipipEnabled":false}}\'')
+        print('kubectl patch ipamconfigurations default --type merge --patch=\'{"spec": {"strictAffinity": true}}\'\n\n')
     
     print('Removing downloaded tools ...')
     check_call(['rm', '-rf', '/root/tools'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
-    
-    print('Use the following command to join worker nodes to this cluster:')
-    print(join_command)
-    print()
-    print('To join Windows node with ContainerD don\'t forget to add --cri-socket "npipe:////./pipe/containerd-containerd"')
-    print(join_command + '--cri-socket "npipe:////./pipe/containerd-containerd"')
     
     # print('Reboot ...')
     # os.system('reboot')

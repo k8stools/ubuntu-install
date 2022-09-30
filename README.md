@@ -1,4 +1,4 @@
-# Ubuntu 22.04 K8S installer
+# Ubuntu 22.04 K8S installer with ContainerD
 
 The install.py script is a very basic one.  
 This script sets up the vim color to fromthehell (https://github.com/szorfein/fromthehell.vim)  

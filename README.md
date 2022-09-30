@@ -10,6 +10,12 @@ It downloads and create files in the /root/ directory
 You don't need to clone the repository to use the script.  
 The bashrc and vim files are dowloaded from the repo by the script.
 
+For now the script initialize the cluster with the 10.244.0.0/16 pod-network-cidr.
+
+```
+kubeadm init --pod-network-cidr=10.244.0.0/16
+```
+
 ## Usage:
 
 For controller node run the script like:

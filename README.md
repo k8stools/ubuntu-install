@@ -27,7 +27,7 @@ For controller node run the script like:
 Example:
 
 ```
-./install.py --kubernetes=1.24.6 --containerd=1.6.8 --node-type=controller
+./install.py --kubernetes=1.27.4 --containerd=1.7.2 --node-type=controller
 ```
 
 For worker node:
@@ -39,5 +39,5 @@ For worker node:
 Example:
 
 ```
-./install.py --kubernetes=1.24.6 --containerd=1.6.8 --node-type=worker --join-token=7yqefg.7djpmf6shjvu2wfm --discovery-token=f00ca89badcd4b88c3ece7d0e7a77c38075ed4952d80373e98b1f67639e262cc --controller-node=10.172.0.100
+./install.py --kubernetes=1.27.4 --containerd=1.7.2 --node-type=worker --join-token=7yqefg.7djpmf6shjvu2wfm --discovery-token=f00ca89badcd4b88c3ece7d0e7a77c38075ed4952d80373e98b1f67639e262cc --controller-node=10.172.0.100
 ```

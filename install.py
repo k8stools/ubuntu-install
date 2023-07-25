@@ -7,6 +7,7 @@ import getopt
 from time import sleep
 import requests
 import apt
+import subprocess
 
 def main(argv):
     kube_version = ''
@@ -38,7 +39,8 @@ def main(argv):
     
     print('Installing basic tools...')
     
-    check_call(['apt', 'install', '-y', 'mc', 'curl', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'open-vm-tools', 'ca-certificates', 'curl', 'apt-transport-https'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['apt', 'install', '-y', 'mc', 'curl', 'vim', 'mlocate', 'net-tools', 'iputils-ping', 'ca-certificates', 'curl', 'apt-transport-https', 'bashtop', 'qemu-guest-agent'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
+    check_call(['systemctl', 'enable', 'qemu-guest-agent'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
     print('Setting up the environment...')
     
@@ -73,6 +75,24 @@ def main(argv):
             print('Please select proper node type. (--node-type=[controller, worker]')
             sys.exit(2)
 
+def download_and_dearmor(url, output_path):
+    try:
+        # Download the GPG key file using requests
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        # Save the downloaded GPG key file to the specified output path
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        # Execute the gpg --dearmor command using subprocess
+        subprocess.run(['gpg', '--dearmor', '-o', '/etc/apt/keyrings/kubernetes-archive-keyring.gpg', output_path], check=True)
+
+        print("GPG key downloaded and processed successfully.")
+    except Exception as e:
+        print("Error: ", e)
+
 def install_k8s(kube_version, node_type, containerd_version, controller_node='', join_token='', discovery_token=''):
     
     check_call(['mkdir', '-pv', '/root/tools/'],
@@ -86,7 +106,7 @@ def install_k8s(kube_version, node_type, containerd_version, controller_node='',
     check_call(['tar', 'Cxzvf', '/usr/local', '/root/tools/containerd.tar.gz'],
         stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
-    runc_version = "1.1.4"
+    runc_version = "1.1.8"
     
     print('Installing runc ' + runc_version + ' ...')
     
@@ -96,7 +116,7 @@ def install_k8s(kube_version, node_type, containerd_version, controller_node='',
     check_call(['install', '-m', '755', '/root/tools/runc.amd64', '/usr/local/sbin/runc'],
         stdout=open(os.devnull,'wb'), stderr=STDOUT)
     
-    cni_plugins_version = "1.1.1"
+    cni_plugins_version = "1.3.0"
     
     print('Installing cni plugins ' + cni_plugins_version + ' ...')
     
@@ -129,11 +149,13 @@ net.ipv4.ip_forward = 1''')
     check_call(["modprobe overlay"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     check_call(["modprobe br_netfilter"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     check_call(["sysctl --system"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-    url = "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
-    r = requests.get(url, allow_redirects=True)
-    open('/usr/share/keyrings/kubernetes-archive-keyring.gpg', 'wb').write(r.content)
+    
+    gpg_key_url = "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+    output_file_path = "/usr/share/keyrings/kubernetes-archive-keyring.gpg"
+    download_and_dearmor(gpg_key_url, output_file_path)
+
     with open('/etc/apt/sources.list.d/kubernetes.list', 'w') as file_out:
-        file_out.write("deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main\n")
+        file_out.write("deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main\n")
     check_call(["apt update"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     check_call(["apt install -y kubelet=" + kube_version + "-00 kubeadm=" + kube_version + "-00 kubectl=" + kube_version + "-00"], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
     check_call(['apt-mark', 'hold', 'kubeadm', 'kubectl', 'kubelet'], stdout=open(os.devnull,'wb'), stderr=STDOUT)
@@ -157,12 +179,12 @@ net.ipv4.ip_forward = 1''')
         
         print("Installing Calico networking tools ...")
     
-        check_call(['curl -L https://github.com/projectcalico/calico/releases/download/v3.24.1/calicoctl-linux-amd64 -o /root/tools/calicoctl'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['curl -L https://github.com/projectcalico/calico/releases/download/v3.26.1/calicoctl-linux-amd64 -o /root/tools/calicoctl'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['chmod +x /root/tools/calicoctl'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['mv /root/tools/calicoctl /usr/bin/'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-        check_call(['curl https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/calico.yaml -o /root/tools/calico.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['curl https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml -o /root/tools/calico.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['kubectl apply -f /root/tools/calico.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
-        check_call(['kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/apiserver.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
+        check_call(['kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/apiserver.yaml'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['openssl req -x509 -nodes -newkey rsa:4096 -keyout /root/tools/apiserver.key -out /root/tools/apiserver.crt -days 365 -subj "/" -addext "subjectAltName = DNS:calico-api.calico-apiserver.svc"'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['kubectl create secret -n calico-apiserver generic calico-apiserver-certs --from-file=/root/tools/apiserver.key --from-file=/root/tools/apiserver.crt'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
         check_call(['kubectl patch apiservice v3.projectcalico.org -p "{\\"spec\\": {\\"caBundle\\": \\"$(kubectl get secret -n calico-apiserver calico-apiserver-certs -o go-template=\'{{ index .data "apiserver.crt" }}\')\\"}}"'], stdout=open(os.devnull,'wb'), stderr=STDOUT, shell=True)
